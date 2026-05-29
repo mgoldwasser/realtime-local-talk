@@ -6,9 +6,19 @@ calls ``web_search`` with a focused query, the tool fires an OpenAI Responses
 call that internally browses the web and returns a synthesized answer with
 citations. Bedrock Claude then relays it in conversational voice.
 
-OpenAI is in our vendor allowlist; Tavily/Perplexity/Brave are not. If/when
-Bedrock exposes Anthropic's native ``web_search`` server tool we'd switch to
-that (one round-trip cheaper), but as of build time it isn't reliably available.
+Why OpenAI and not Anthropic's native web_search on Bedrock:
+
+  As of 2026-05-29, AWS Bedrock advertises ``web_search_20250305`` in its
+  Converse / InvokeModel validation schema (it appears in the list of
+  accepted ``type`` values for ``additionalModelRequestFields.tools``)
+  but actual invocation fails with a generic ``ValidationException:
+  The provided request is not valid`` on both Haiku 4.5 and Sonnet 4.5.
+  Tested with and without ``max_uses``, via Converse and InvokeModel,
+  using inference profile IDs. This appears to be an AWS rollout gap
+  — schema advertises support, runtime doesn't. Re-probe periodically;
+  if it starts returning real results, the swap is trivial.
+
+Tavily / Perplexity / Brave are out of our vendor allowlist.
 """
 
 from __future__ import annotations

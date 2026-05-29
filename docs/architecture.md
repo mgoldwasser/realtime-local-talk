@@ -229,6 +229,7 @@ Only the LLM query and the web search ever leave the laptop. The research corpus
 See README "Known limitations" for the user-facing list. Internally:
 
 - Speculative classifier that predicts tool-need before calling Haiku → unbuilt; would close most of the sub-1 s gap on tool turns
+- **Bedrock native Anthropic `web_search` server tool** → AWS advertises it in the Converse schema (`web_search_20250305` is in the supported `type` list) but actual invocation fails with `ValidationException: The provided request is not valid` as of 2026-05-29. Re-probe periodically; if/when it works, drop OpenAI from the web-search path. See `alex/llm/web_search.py` module docstring for the test details.
 - Sonnet streaming straight to TTS (skipping Haiku relay) → unbuilt; would save 2-4 s on escalation turns
 - Software AEC (WebRTC AEC3) → blocked on Apple Silicon arm64 build flags; documented in `docs/aec-status.md`
 - Custom "Hey Alex" wake-word for `wakeword` mode → scaffolded in `alex/wake/trainer/` but not run; LISTEN mode sidesteps this

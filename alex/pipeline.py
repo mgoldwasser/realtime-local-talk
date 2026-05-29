@@ -60,6 +60,7 @@ from alex.rag.entities import EntityCorpus
 from alex.rag.lancedb_store import LanceCorpus
 from alex.rag.vocab import load_vocab_prompt
 from alex.stt.mlx_whisper_service import build_stt_service
+from alex.turn.echo_filter import TextBasedEchoFilter
 from alex.turn.keyword_router import TranscriptKeywordRouter
 from alex.turn.transcript_buffer import RollingTranscriptBuffer
 from alex.wake.openwakeword_runner import (
@@ -76,6 +77,14 @@ SYSTEM_PROMPT = (
     "out loud to a meeting room, not writing prose. Default to one to three "
     "short sentences. If you don't know, say so quickly. Never read out long "
     "URLs, citations, or markdown formatting.\n\n"
+    "ANSWER STYLE: Answer the question directly and then STOP. Do NOT ask "
+    "follow-up questions. Do NOT offer to look up more (\"want me to check…\", "
+    "\"should I pull up…\", \"is there anything else…\"). Do NOT ask the user "
+    "what angle they care about or how that squares with what they're seeing. "
+    "The meeting will move on; trust the user to ask the next question if "
+    "they want one. The ONE exception: if the user's request is genuinely "
+    "ambiguous and you cannot answer without clarification, ask ONE short "
+    "clarifying question — never more.\n\n"
     "TOOLS:\n"
     "• `rag_lookup` — call for any question about the firm's positioning, "
     "our prior calls, internal views, factor exposures, TAA committee "
@@ -346,13 +355,21 @@ async def run_pipeline(
                 listen_secs=settings.wakeword_listen_secs,
             )
             mute_strategies.append(WakeWordMuteStrategy(wake_state))
-        # Self-echo guard — always on unless hardware AEC handles it.
-        if not settings.hardware_aec_present:
-            mute_strategies.append(AlwaysUserMuteStrategy())
-        else:
+        # Self-echo guard — three modes:
+        #   1. hardware_aec_present       → no software guard, hardware handles it
+        #   2. echo_filter (text-based)   → echo_filter processor (added later),
+        #                                    no hard mute, real barge-in
+        #   3. default                    → AlwaysUserMuteStrategy hard mute
+        if settings.hardware_aec_present:
             logger.info(
                 "hardware AEC mode: software self-mute disabled; barge-in enabled"
             )
+        elif settings.echo_filter:
+            logger.info(
+                "echo filter mode: text-based barge-in enabled (no hard mute)"
+            )
+        else:
+            mute_strategies.append(AlwaysUserMuteStrategy())
 
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,
@@ -488,6 +505,18 @@ async def run_pipeline(
     # → stt_tap closes the stt stage and opens llm_ttft → ...
     # Text mode: stdin pushes TranscriptionFrame; endpoint_tap never fires, so
     # stt_tap is the anchor (stt duration ≈ 0).
+    # Optional echo filter — must sit downstream of STT so it sees both
+    # TranscriptionFrames AND the LLMTextFrames going to TTS. We build it
+    # here so we can also place it in the pipeline list below.
+    echo_filter = (
+        TextBasedEchoFilter(
+            overlap_threshold=settings.echo_filter_overlap_threshold,
+            tts_window_secs=settings.echo_filter_tts_window_secs,
+        )
+        if (not text_input and settings.echo_filter and not settings.hardware_aec_present)
+        else None
+    )
+
     stages: list = [transport.input()]
     if wake_detector is not None:
         stages.append(wake_detector)
@@ -495,6 +524,8 @@ async def run_pipeline(
     if stt is not None:
         stages.append(stt)
     stages.append(stt_tap)
+    if echo_filter is not None:
+        stages.append(echo_filter)
     # Keyword router goes after STT-done timing (so we measure STT cost on
     # every utterance, triggered or not) and before the user aggregator
     # (so suppressed turns never reach the LLM).

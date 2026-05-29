@@ -90,6 +90,16 @@ class Settings(BaseSettings):
     # so barge-in works. Without hardware AEC this creates an echo loop.
     hardware_aec_present: bool = False
 
+    # Software echo filter (text-based barge-in). When True, replaces
+    # AlwaysUserMuteStrategy with a content-based filter that compares
+    # incoming transcripts to what Polly is currently saying. High overlap
+    # → echo, suppress. Low overlap → real interrupt, fire interruption.
+    # Tradeoff: lets you barge in with phrases unlike Alex's reply, but
+    # can mis-classify if you happen to repeat Alex's words back at him.
+    echo_filter: bool = False
+    echo_filter_overlap_threshold: float = 0.6
+    echo_filter_tts_window_secs: float = 15.0
+
     # STT (MLX-Whisper) — values map to alex.stt.mlx_whisper_service.MLXModel.
     # LARGE_V3_TURBO_Q4 is the plan's pick: best quality/latency tradeoff at
     # ~1.5 GB on Apple Silicon Neural Engine.
