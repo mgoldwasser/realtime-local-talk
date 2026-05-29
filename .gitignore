@@ -26,3 +26,6 @@ corpora/private/
 logs/
 *.log
 latency_runs/
+.playwright-mcp/
+*.png
+*.jpeg

@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Alex — Meeting Assistant</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #131822;
+    --panel-2: #1a212e;
+    --border: #232b3a;
+    --text: #e6edf3;
+    --muted: #8b97a8;
+    --accent: #5b9dff;
+    --green: #3fb950;
+    --amber: #d29922;
+    --purple: #bc8cff;
+    --red: #f85149;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--sans); height: 100vh; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 22px; border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: .3px; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  .state-pill {
+    margin-left: auto; display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 999px; background: var(--panel-2);
+    border: 1px solid var(--border); font-size: 13px; font-weight: 600;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.listening { background: var(--green); box-shadow: 0 0 0 0 rgba(63,185,80,.5); animation: pulse 2s infinite; }
+  .dot.thinking  { background: var(--amber); animation: blink 1s infinite; }
+  .dot.searching { background: var(--purple); animation: blink .6s infinite; }
+  .dot.speaking  { background: var(--accent); animation: blink .5s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(63,185,80,.5)} 70%{box-shadow:0 0 0 8px rgba(63,185,80,0)} 100%{box-shadow:0 0 0 0 rgba(63,185,80,0)} }
+  @keyframes blink { 50% { opacity: .4; } }
+
+  .layout { display: grid; grid-template-columns: 1fr 360px; height: calc(100vh - 57px); }
+  .main { display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
+  .side { display: flex; flex-direction: column; overflow: hidden; }
+
+  .section-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
+    color: var(--muted); padding: 12px 18px 6px; font-weight: 700;
+  }
+  .transcript { flex: 1; overflow-y: auto; padding: 4px 18px 18px; }
+  .turn { margin: 8px 0; line-height: 1.5; font-size: 14px; display: flex; gap: 10px; }
+  .turn .mark { flex: 0 0 auto; width: 18px; text-align: center; opacity: .8; }
+  .turn.passive   { color: var(--muted); }
+  .turn.triggered .text, .turn.follow_up .text { color: var(--text); font-weight: 550; }
+  .turn.said { background: var(--panel-2); border-left: 3px solid var(--accent);
+               padding: 10px 12px; border-radius: 6px; margin: 10px 0; }
+  .turn.said .text { color: var(--text); }
+  .turn.barge { color: var(--red); font-weight: 600; }
+
+  .feed { flex: 1; overflow-y: auto; padding: 4px 14px 14px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; margin: 8px 0; font-size: 13px;
+  }
+  .card .title { font-weight: 650; color: var(--accent); font-size: 12px; }
+  .card .section { color: var(--muted); font-size: 11px; margin: 2px 0 6px; }
+  .card .excerpt { color: var(--text); line-height: 1.45; }
+  .card .score { float: right; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .tool {
+    display: flex; gap: 8px; align-items: baseline; font-size: 13px;
+    padding: 6px 0; border-bottom: 1px solid var(--border); color: var(--muted);
+  }
+  .tool .name { color: var(--purple); font-weight: 650; font-family: var(--mono); }
+  .tool .detail { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .latency { padding: 10px 18px; border-top: 1px solid var(--border); background: var(--panel);
+             font-family: var(--mono); font-size: 12px; color: var(--muted); display: flex; gap: 16px; flex-wrap: wrap; }
+  .latency b { color: var(--text); font-weight: 600; }
+
+  .controls { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; gap: 10px; }
+  button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 7px; padding: 8px 14px; font-size: 13px; cursor: pointer; font-weight: 600;
+  }
+  button:hover { border-color: var(--accent); }
+  button.active { background: var(--red); border-color: var(--red); }
+  .empty { color: var(--muted); font-size: 13px; padding: 18px; font-style: italic; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Alex</h1>
+    <span class="sub">real-time meeting assistant</span>
+    <div class="state-pill"><span id="dot" class="dot"></span><span id="state">connecting…</span></div>
+  </header>
+
+  <div class="layout">
+    <div class="main">
+      <div class="section-label">Live transcript</div>
+      <div id="transcript" class="transcript">
+        <div class="empty">Waiting for room audio…</div>
+      </div>
+      <div id="latency" class="latency"></div>
+      <div class="controls">
+        <button id="muteBtn">🎙 Mute mic</button>
+        <button id="clearBtn">Clear transcript</button>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="section-label">Tool activity</div>
+      <div id="tools" class="feed" style="flex:0 0 30%; border-bottom:1px solid var(--border);">
+        <div class="empty">No lookups yet.</div>
+      </div>
+      <div class="section-label">Sources cited</div>
+      <div id="citations" class="feed">
+        <div class="empty">Citations appear here when Alex pulls from research.</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const transcript = $("transcript"), tools = $("tools"), citations = $("citations");
+let muted = false;
+
+function clearEmpty(el){ const e = el.querySelector(".empty"); if(e) e.remove(); }
+function scroll(el){ el.scrollTop = el.scrollHeight; }
+
+const MARKS = { passive:"·", triggered:"⚡", follow_up:"↳" };
+
+function addTranscript(kind, text){
+  clearEmpty(transcript);
+  const div = document.createElement("div");
+  div.className = "turn " + kind;
+  div.innerHTML = `<span class="mark">${MARKS[kind]||"·"}</span><span class="text"></span>`;
+  div.querySelector(".text").textContent = text;
+  transcript.appendChild(div);
+  scroll(transcript);
+}
+function addSaid(text){
+  clearEmpty(transcript);
+  const div = document.createElement("div");
+  div.className = "turn said";
+  div.innerHTML = `<span class="mark">🗣</span><span class="text"></span>`;
+  div.querySelector(".text").textContent = text;
+  transcript.appendChild(div);
+  scroll(transcript);
+}
+function addBarge(text){
+  clearEmpty(transcript);
+  const div = document.createElement("div");
+  div.className = "turn barge";
+  div.innerHTML = `<span class="mark">🚨</span><span class="text"></span>`;
+  div.querySelector(".text").textContent = "barge-in: " + text;
+  transcript.appendChild(div);
+  scroll(transcript);
+}
+function addTool(name, detail){
+  clearEmpty(tools);
+  const div = document.createElement("div");
+  div.className = "tool";
+  div.innerHTML = `<span class="name"></span><span class="detail"></span>`;
+  div.querySelector(".name").textContent = name;
+  div.querySelector(".detail").textContent = detail || "";
+  tools.appendChild(div);
+  scroll(tools);
+}
+function addCitation(c){
+  clearEmpty(citations);
+  const div = document.createElement("div");
+  div.className = "card";
+  const score = (c.score!=null) ? `<span class="score">${c.score}</span>` : "";
+  div.innerHTML = `${score}<div class="title"></div><div class="section"></div><div class="excerpt"></div>`;
+  div.querySelector(".title").textContent = c.title || "(untitled)";
+  div.querySelector(".section").textContent = c.section || "";
+  div.querySelector(".excerpt").textContent = c.excerpt || "";
+  citations.appendChild(div);
+  scroll(citations);
+}
+function setState(s){
+  const labels = {idle:"idle", listening:"listening", thinking:"thinking…",
+                  searching:"searching…", speaking:"speaking…"};
+  $("state").textContent = labels[s] || s;
+  $("dot").className = "dot " + s;
+}
+function setLatency(d){
+  const f = (k) => d[k]!=null ? `<b>${Math.round(d[k])}</b>ms` : "—";
+  $("latency").innerHTML =
+    `stt ${f("stt")} · llm-start ${f("llm_start")} · ttft ${f("llm_ttft")} ` +
+    `· llm-done ${f("llm_done")} · tts ${f("tts_ttfa")} · <span style="color:var(--accent)">perceived ${f("perceived")}</span>`;
+}
+
+function connect(){
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => setState("listening");
+  ws.onclose = () => { setState("idle"); $("state").textContent = "disconnected — retrying"; setTimeout(connect, 1500); };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    switch(m.type){
+      case "state":      setState(m.state); break;
+      case "transcript": addTranscript(m.kind, m.text); break;
+      case "said":       addSaid(m.text); break;
+      case "tool":       addTool(m.name, m.detail); break;
+      case "citation":   addCitation(m); break;
+      case "latency":    setLatency(m.durations || {}); break;
+      case "barge_in":   addBarge(m.text); break;
+      case "notice":     /* could show a toast; ignore for now */ break;
+    }
+  };
+  window._ws = ws;
+}
+connect();
+
+$("muteBtn").onclick = () => {
+  muted = !muted;
+  $("muteBtn").classList.toggle("active", muted);
+  $("muteBtn").textContent = muted ? "🔇 Muted" : "🎙 Mute mic";
+  if(window._ws && window._ws.readyState===1)
+    window._ws.send(JSON.stringify({action:"mute", value:muted}));
+};
+$("clearBtn").onclick = () => {
+  transcript.innerHTML = '<div class="empty">Cleared.</div>';
+};
+</script>
+</body>
+</html>

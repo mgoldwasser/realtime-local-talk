@@ -159,6 +159,7 @@ async def run_pipeline(
     text_input: bool,
     forced_tier: Optional[LlmTier],
     silent: bool = False,
+    bus=None,
 ) -> None:
     logger.remove()
     logger.add(sys.stderr, level=os.getenv("LOGLEVEL", "INFO"))
@@ -257,6 +258,8 @@ async def run_pipeline(
             return
         filler = _random.choice(FILLERS)
         logger.info(f"💬 filler: {filler!r} (tools: {[c.function_name for c in calls]})")
+        if bus:
+            bus.emit("notice", level="info", text=f"filler: {filler}")
         await tts.queue_frame(TTSSpeakFrame(filler))
 
     # --- LISTEN-mode keyword router (works in both voice + text modes) ----
@@ -268,6 +271,7 @@ async def run_pipeline(
             buffer=buffer,
             follow_up_initial_secs=settings.listen_follow_up_initial_secs,
             follow_up_extend_secs=settings.listen_follow_up_extend_secs,
+            bus=bus,
         )
         logger.info(
             f"LISTEN mode: triggers={triggers}, "
@@ -308,6 +312,7 @@ async def run_pipeline(
             aws_region=settings.aws_region,
             duck=duck,
             entities=entities,
+            bus=bus,
         )
         tool_schema, handlers = build_tools(deps)
         for name, fn in handlers.items():
@@ -355,6 +360,12 @@ async def run_pipeline(
                 listen_secs=settings.wakeword_listen_secs,
             )
             mute_strategies.append(WakeWordMuteStrategy(wake_state))
+        # Dashboard mute (web UI button) — composes with everything else.
+        if bus is not None:
+            from alex.web.events import DashboardMuteStrategy
+
+            mute_strategies.append(DashboardMuteStrategy(bus))
+
         # Self-echo guard — three modes:
         #   1. hardware_aec_present       → no software guard, hardware handles it
         #   2. echo_filter (text-based)   → echo_filter processor (added later),
@@ -445,6 +456,8 @@ async def run_pipeline(
         t.mark_first_audio()  # marks the perceived-end anchor (idempotent)
         turn_log.write(t)
         logger.info(f"⏱  turn {t.turn_id} {t.durations}")
+        if bus:
+            bus.emit("latency", turn_id=t.turn_id, durations=t.durations)
         current_timer.pop("t", None)
 
     def _mark_llm_done() -> None:
@@ -468,7 +481,11 @@ async def run_pipeline(
         t = current_timer.get("t")
         if t and "tts_ttfa" not in t.durations and "tts_ttfa" in t._starts:
             t.durations["tts_ttfa"] = (_t.perf_counter() - t._starts["tts_ttfa"]) * 1000
+        if bus:
+            bus.emit("state", state="speaking")
         _close_turn()
+        if bus:
+            bus.emit("state", state="listening")
 
     endpoint_tap = LatencyTap("endpoint", _mark_endpoint)
     stt_tap = LatencyTap("stt", _mark_stt)
@@ -493,7 +510,10 @@ async def run_pipeline(
                 from pipecat.frames.frames import LLMFullResponseEndFrame
 
                 if isinstance(frame, LLMFullResponseEndFrame):
-                    logger.info(f"🗣  said: {''.join(self._buf).strip()}")
+                    said = "".join(self._buf).strip()
+                    logger.info(f"🗣  said: {said}")
+                    if bus and said:
+                        bus.emit("said", text=said)
                     self._buf.clear()
             await self.push_frame(frame, direction)
 
@@ -628,6 +648,10 @@ async def run_pipeline(
             stop_event.set()
 
     runner = PipelineRunner(handle_sigint=True)
+
+    if bus:
+        bus.emit("state", state="listening")
+        bus.emit("notice", level="info", text="Alex is online and listening")
 
     # Start the PTT hotkey listener now that we know the runner is ready.
     if ptt_state is not None:

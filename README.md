@@ -54,6 +54,18 @@ uv run alex --text-input         # type instead of speak, audio out
 uv run alex --text-input --silent  # text in / text out, no audio (Zoom-safe)
 ```
 
+## Web dashboard
+
+A browser dashboard shows what Alex is doing in real time — live transcript, state (listening / thinking / searching / speaking), tool activity, cited sources, and the per-turn latency breakdown. Audio stays local (mic + speakers on the Mac); the browser is an observability window, not the audio device.
+
+```bash
+uv run alex-web          # then open http://localhost:8765
+```
+
+The dashboard forces LISTEN mode (the meeting use case). It streams events over a WebSocket and lets you mute the mic from the browser. The CLI modes above remain available for headless use.
+
+Architecture note: this is an *observer dashboard* — the right design for an in-room appliance where audio is local. A future option is `SmallWebRTCTransport` to move audio into the browser for fully-remote use.
+
 ## What's in the box
 
 **Speech pipeline (local)**
@@ -147,7 +159,12 @@ realtime-local-talk/
 │   ├── tts/                    # (Polly via Pipecat; module reserved)
 │   ├── turn/
 │   │   ├── keyword_router.py   # LISTEN trigger + follow-up window
-│   │   └── transcript_buffer.py # rolling N-min meeting memory
+│   │   ├── transcript_buffer.py # rolling N-min meeting memory
+│   │   └── echo_filter.py      # content-based barge-in (text AEC)
+│   ├── web/
+│   │   ├── server.py           # FastAPI dashboard + pipeline runner
+│   │   ├── events.py           # pub/sub bus + dashboard mute strategy
+│   │   └── static/index.html   # single-file dashboard (no build step)
 │   └── wake/
 │       ├── openwakeword_runner.py  # ONNX wake-word detector
 │       ├── ptt.py              # global PTT hotkey via pynput

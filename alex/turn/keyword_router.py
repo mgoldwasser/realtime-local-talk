@@ -46,8 +46,10 @@ class TranscriptKeywordRouter(FrameProcessor):
         suppress_llm_run: bool = True,
         follow_up_initial_secs: float = 10.0,
         follow_up_extend_secs: float = 6.0,
+        bus=None,
     ) -> None:
         super().__init__()
+        self._bus = bus
         # Pre-normalize triggers for fast substring match.
         self._triggers = tuple(_normalize(t) for t in triggers if t.strip())
         self._buffer = buffer
@@ -129,14 +131,22 @@ class TranscriptKeywordRouter(FrameProcessor):
             if matched is None and not in_follow_up:
                 # Passive room talk — log it, but keep the LLM silent.
                 logger.info(f"👂 passive: {text}")
+                if self._bus:
+                    self._bus.emit("transcript", kind="passive", text=text)
                 self._last_was_suppressed = True
                 return
 
             self._last_was_suppressed = False
             if matched is not None:
                 logger.info(f"⚡ triggered ({matched!r}): {text}")
+                if self._bus:
+                    self._bus.emit("transcript", kind="triggered", text=text)
+                    self._bus.emit("state", state="thinking")
             else:
                 logger.info(f"💬 follow-up: {text}")
+                if self._bus:
+                    self._bus.emit("transcript", kind="follow_up", text=text)
+                    self._bus.emit("state", state="thinking")
             # Don't close the window here — VAD will keep extending it while
             # the user is speaking, and BotStartedSpeakingFrame closes it
             # cleanly when Alex begins replying.

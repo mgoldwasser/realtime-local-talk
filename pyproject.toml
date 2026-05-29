@@ -44,10 +44,12 @@ dependencies = [
     "typer>=0.15.0",
     "rich>=14.0.0",
     "openwakeword>=0.4.0",
+    "fastapi>=0.136.3",
 ]
 
 [project.scripts]
 alex = "alex.app:cli"
+alex-web = "alex.web.server:run"
 
 [dependency-groups]
 dev = [

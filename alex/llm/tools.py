@@ -68,6 +68,7 @@ class RagDeps:
     aws_region: str = "us-east-1"
     duck: Optional[DuckDBCorpus] = None
     entities: Optional[EntityCorpus] = None
+    bus: Any = None  # UIEventBus | None — web dashboard event sink
 
 
 def make_rag_lookup(deps: RagDeps):
@@ -97,6 +98,17 @@ def make_rag_lookup(deps: RagDeps):
         qv = deps.embedder.encode([query]).vectors[0]
         hits = deps.corpus.search(query_text=query, query_vector=qv, limit=limit)
         logger.info(f"🔎 rag_lookup({query!r}, limit={limit}) → {len(hits)} hits")
+        if deps.bus:
+            deps.bus.emit("state", state="searching")
+            deps.bus.emit("tool", name="rag_lookup", detail=query)
+            for h in hits[:3]:
+                deps.bus.emit(
+                    "citation",
+                    title=h.title,
+                    section=h.section,
+                    excerpt=h.text[:280],
+                    score=round(h.score, 3),
+                )
 
         result: dict[str, Any] = {
             "query": query,
@@ -151,6 +163,9 @@ def make_sql_lookup(deps: RagDeps):
             )
             return
         logger.info(f"🛢  sql_lookup: {sql[:140]}")
+        if deps.bus:
+            deps.bus.emit("state", state="searching")
+            deps.bus.emit("tool", name="sql_lookup", detail=sql[:200])
         result = deps.duck.query(sql, row_limit=200)
         await params.result_callback(
             {"sql": sql, "result": result.to_text(max_rows=20), "row_count": len(result.rows)}
@@ -193,6 +208,9 @@ def make_entity_lookup(deps: RagDeps):
         if not raw:
             await params.result_callback({"error": "entity is required"})
             return
+        if deps.bus:
+            deps.bus.emit("state", state="searching")
+            deps.bus.emit("tool", name="entity_lookup", detail=raw)
 
         # Allow simple "mode:value" prefixes for inverted lookups.
         if ":" in raw:
