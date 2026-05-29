@@ -9,6 +9,11 @@ class Activation(str, Enum):
     PTT = "ptt"
     WAKEWORD = "wakeword"
     BOTH = "both"
+    # Continuously transcribe everything; only fire the LLM when a trigger
+    # phrase ("alex", "hey alex", ...) appears in the transcript. Maintains
+    # a rolling buffer of all room talk so triggered turns get the full
+    # recent conversation as context. Best fit for meeting-assistant use.
+    LISTEN = "listen"
 
 
 class TtsBackend(str, Enum):
@@ -62,6 +67,13 @@ class Settings(BaseSettings):
     wakeword_model_path: Optional[str] = None  # None → bundled alexa model
     wakeword_threshold: float = 0.5
     wakeword_listen_secs: float = 10.0
+
+    # LISTEN-mode tuning. Trigger phrases are checked case-insensitively as
+    # substrings against the full transcribed turn (after Pipecat's
+    # end-of-turn detection). Buffer window controls how much prior room
+    # talk gets handed to Alex as context on each triggered turn.
+    listen_triggers: str = "alex,hey alex,ask alex"
+    listen_buffer_minutes: float = 5.0
 
     # Audio device names (CoreAudio); empty means system default.
     input_device: str = ""

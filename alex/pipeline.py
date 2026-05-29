@@ -60,6 +60,8 @@ from alex.rag.entities import EntityCorpus
 from alex.rag.lancedb_store import LanceCorpus
 from alex.rag.vocab import load_vocab_prompt
 from alex.stt.mlx_whisper_service import build_stt_service
+from alex.turn.keyword_router import TranscriptKeywordRouter
+from alex.turn.transcript_buffer import RollingTranscriptBuffer
 from alex.wake.openwakeword_runner import (
     WakeWordDetector,
     WakeWordMuteStrategy,
@@ -248,6 +250,16 @@ async def run_pipeline(
         logger.info(f"💬 filler: {filler!r} (tools: {[c.function_name for c in calls]})")
         await tts.queue_frame(TTSSpeakFrame(filler))
 
+    # --- LISTEN-mode keyword router (works in both voice + text modes) ----
+    if settings.activation == Activation.LISTEN:
+        triggers = [t.strip() for t in settings.listen_triggers.split(",") if t.strip()]
+        buffer = RollingTranscriptBuffer(window_minutes=settings.listen_buffer_minutes)
+        keyword_router = TranscriptKeywordRouter(triggers=triggers, buffer=buffer)
+        logger.info(
+            f"LISTEN mode: triggers={triggers}, "
+            f"buffer={settings.listen_buffer_minutes:.0f} min"
+        )
+
     # --- RAG (lazy-loaded; empty corpus is fine) --------------------------
     rag_corpus = LanceCorpus(
         settings.lance_db_path, table=settings.lance_table
@@ -296,8 +308,9 @@ async def run_pipeline(
     context = LLMContext(tools=tool_schema) if tool_schema else LLMContext()
     # Mute strategy selection. Strategies are OR-combined — mute if ANY says
     # to mute. Two orthogonal concerns:
-    #   1. The user's activation gate (always-on / PTT / wake) — decides
-    #      whether the mic is "open" right now at all.
+    #   1. The user's activation gate — decides whether the mic is "open"
+    #      right now at all. LISTEN mode has no gate at the mic; gating
+    #      happens later via the keyword router on the transcript.
     #   2. The self-echo guard — must mute *while Alex is speaking* even
     #      inside an open window, otherwise Polly through speakers gets
     #      transcribed as a new user turn and we loop. The exception is
@@ -328,7 +341,6 @@ async def run_pipeline(
                 listen_secs=settings.wakeword_listen_secs,
             )
             mute_strategies.append(WakeWordMuteStrategy(wake_state))
-
         # Self-echo guard — always on unless hardware AEC handles it.
         if not settings.hardware_aec_present:
             mute_strategies.append(AlwaysUserMuteStrategy())
@@ -477,9 +489,14 @@ async def run_pipeline(
     stages.append(endpoint_tap)
     if stt is not None:
         stages.append(stt)
+    stages.append(stt_tap)
+    # Keyword router goes after STT-done timing (so we measure STT cost on
+    # every utterance, triggered or not) and before the user aggregator
+    # (so suppressed turns never reach the LLM).
+    if keyword_router is not None:
+        stages.append(keyword_router)
     stages.extend(
         [
-            stt_tap,
             user_aggregator,
             llm,
             llm_start_tap,
@@ -505,19 +522,51 @@ async def run_pipeline(
     )
 
     # --- text_input loop --------------------------------------------------
-    # asyncio's add_reader hooks stdin's fd into the event loop so reads
-    # don't block a worker thread — that means Ctrl-C cancels cleanly.
+    # A small reader thread feeds lines into an asyncio queue. The thread
+    # uses ``select`` so it wakes up periodically (without blocking on a
+    # single readline) and we can shut it down cleanly via ``stop_event``.
     async def _stdin_loop() -> None:
+        import select
+        import threading
         from datetime import datetime as _dt
 
         loop = asyncio.get_event_loop()
         queue: asyncio.Queue[str | None] = asyncio.Queue()
+        stop_event = threading.Event()
 
-        def _on_fd_readable() -> None:
-            line = sys.stdin.readline()
-            queue.put_nowait(line if line else None)
+        def _reader() -> None:
+            # Use raw os.read so we control buffering — Python's readline()
+            # caches data in a private buffer that select() can't see, which
+            # serializes batched stdin into one line per kernel readiness
+            # event (20+ second delays between piped lines).
+            import os
 
-        loop.add_reader(sys.stdin.fileno(), _on_fd_readable)
+            fd = sys.stdin.fileno()
+            pending = b""
+            while not stop_event.is_set():
+                ready, _, _ = select.select([fd], [], [], 0.1)
+                if not ready:
+                    continue
+                try:
+                    chunk = os.read(fd, 4096)
+                except OSError:
+                    loop.call_soon_threadsafe(queue.put_nowait, None)
+                    return
+                if not chunk:
+                    if pending:
+                        loop.call_soon_threadsafe(queue.put_nowait, pending.decode("utf-8", "replace"))
+                    loop.call_soon_threadsafe(queue.put_nowait, None)
+                    return
+                pending += chunk
+                while b"\n" in pending:
+                    line, _, pending = pending.partition(b"\n")
+                    loop.call_soon_threadsafe(
+                        queue.put_nowait, (line + b"\n").decode("utf-8", "replace")
+                    )
+
+        reader = threading.Thread(target=_reader, daemon=True)
+        reader.start()
+
         logger.info("text-input mode: type a message and press enter. Ctrl-C or Ctrl-D to exit.")
         try:
             while True:
@@ -540,7 +589,7 @@ async def run_pipeline(
                 )
                 await task.queue_frame(LLMRunFrame())
         finally:
-            loop.remove_reader(sys.stdin.fileno())
+            stop_event.set()
 
     runner = PipelineRunner(handle_sigint=True)
 
