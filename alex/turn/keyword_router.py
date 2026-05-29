@@ -15,14 +15,18 @@ recent conversation available as context on each response.
 from __future__ import annotations
 
 import re
+import time
 from typing import Sequence
 
 from loguru import logger
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
     Frame,
     LLMRunFrame,
     StartFrame,
     TranscriptionFrame,
+    UserStartedSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -40,6 +44,8 @@ class TranscriptKeywordRouter(FrameProcessor):
         triggers: Sequence[str],
         buffer: RollingTranscriptBuffer,
         suppress_llm_run: bool = True,
+        follow_up_initial_secs: float = 10.0,
+        follow_up_extend_secs: float = 6.0,
     ) -> None:
         super().__init__()
         # Pre-normalize triggers for fast substring match.
@@ -51,7 +57,29 @@ class TranscriptKeywordRouter(FrameProcessor):
         # alongside every transcript. Without this, Bedrock receives an empty
         # context and throws "A conversation must start with a user message".
         self._last_was_suppressed = False
-        logger.info(f"keyword router: triggers={list(self._triggers)}")
+        # Follow-up window — open after Alex finishes so a natural back-and-
+        # forth doesn't require re-saying the trigger phrase. Two knobs:
+        # initial_secs is the grace period right after Alex stops; each
+        # subsequent UserStartedSpeakingFrame pushes the deadline forward by
+        # extend_secs so the window stays open while someone is actively
+        # responding. Silence past the deadline = conversation moved on.
+        self._follow_up_initial_secs = follow_up_initial_secs
+        self._follow_up_extend_secs = follow_up_extend_secs
+        self._follow_up_until = 0.0
+        logger.info(
+            f"keyword router: triggers={list(self._triggers)}, "
+            f"follow_up_initial={follow_up_initial_secs:.0f}s, "
+            f"follow_up_extend={follow_up_extend_secs:.0f}s"
+        )
+
+    def _in_follow_up(self) -> bool:
+        return time.time() < self._follow_up_until
+
+    def _extend_follow_up(self, secs: float) -> None:
+        """Push the follow-up deadline forward (never shorten it)."""
+        new_until = time.time() + secs
+        if new_until > self._follow_up_until:
+            self._follow_up_until = new_until
 
     def _is_trigger(self, text: str) -> str | None:
         norm = _normalize(text)
@@ -63,8 +91,23 @@ class TranscriptKeywordRouter(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
 
-        # Pipecat lifecycle frames always pass through (StartFrame, EndFrame,
-        # CancelFrame, …); we only intercept transcripts and the run-trigger.
+        # Bot speech lifecycle + VAD jointly drive the follow-up window:
+        # - Bot stops    → seed the deadline with the initial grace
+        # - User starts  → extend the deadline (someone is actively replying)
+        # - Bot starts   → close the window (Alex is talking again)
+        if isinstance(frame, BotStoppedSpeakingFrame):
+            self._extend_follow_up(self._follow_up_initial_secs)
+            logger.info(
+                f"🎤 follow-up window: {self._follow_up_initial_secs:.0f}s "
+                f"grace, +{self._follow_up_extend_secs:.0f}s per utterance"
+            )
+        elif isinstance(frame, UserStartedSpeakingFrame) and self._in_follow_up():
+            # User is speaking inside the window — extend so a pause-to-think
+            # mid-reply doesn't kill the window before they finish.
+            self._extend_follow_up(self._follow_up_extend_secs)
+        elif isinstance(frame, BotStartedSpeakingFrame) and self._follow_up_until:
+            self._follow_up_until = 0.0
+
         # Swallow LLMRunFrames that the text-input loop emits after a
         # suppressed transcript. In voice mode the user aggregator fires the
         # run frame internally only when it actually has a user message to
@@ -80,16 +123,23 @@ class TranscriptKeywordRouter(FrameProcessor):
                 return
 
             matched = self._is_trigger(text)
-            self._buffer.add(text, triggered=matched is not None)
+            in_follow_up = self._in_follow_up()
+            self._buffer.add(text, triggered=(matched is not None) or in_follow_up)
 
-            if matched is None:
+            if matched is None and not in_follow_up:
                 # Passive room talk — log it, but keep the LLM silent.
                 logger.info(f"👂 passive: {text}")
                 self._last_was_suppressed = True
                 return
 
             self._last_was_suppressed = False
-            logger.info(f"⚡ triggered ({matched!r}): {text}")
+            if matched is not None:
+                logger.info(f"⚡ triggered ({matched!r}): {text}")
+            else:
+                logger.info(f"💬 follow-up: {text}")
+            # Don't close the window here — VAD will keep extending it while
+            # the user is speaking, and BotStartedSpeakingFrame closes it
+            # cleanly when Alex begins replying.
             # Rewrite the frame so the LLM sees recent room context first,
             # then the addressed question. We do not modify the buffer entry
             # itself — only the text handed to the LLM aggregator.

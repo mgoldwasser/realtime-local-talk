@@ -254,7 +254,12 @@ async def run_pipeline(
     if settings.activation == Activation.LISTEN:
         triggers = [t.strip() for t in settings.listen_triggers.split(",") if t.strip()]
         buffer = RollingTranscriptBuffer(window_minutes=settings.listen_buffer_minutes)
-        keyword_router = TranscriptKeywordRouter(triggers=triggers, buffer=buffer)
+        keyword_router = TranscriptKeywordRouter(
+            triggers=triggers,
+            buffer=buffer,
+            follow_up_initial_secs=settings.listen_follow_up_initial_secs,
+            follow_up_extend_secs=settings.listen_follow_up_extend_secs,
+        )
         logger.info(
             f"LISTEN mode: triggers={triggers}, "
             f"buffer={settings.listen_buffer_minutes:.0f} min"

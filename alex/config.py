@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     # talk gets handed to Alex as context on each triggered turn.
     listen_triggers: str = "alex,hey alex,ask alex"
     listen_buffer_minutes: float = 5.0
+    # Follow-up window: after Alex finishes speaking, the next user
+    # utterance fires the LLM without a trigger phrase. Initial grace runs
+    # right after Alex stops; each VAD user-start event extends the window
+    # by `extend` seconds so a pause-to-think mid-reply doesn't close it.
+    listen_follow_up_initial_secs: float = 10.0
+    listen_follow_up_extend_secs: float = 6.0
 
     # Audio device names (CoreAudio); empty means system default.
     input_device: str = ""
