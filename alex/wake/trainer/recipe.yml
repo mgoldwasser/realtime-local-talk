@@ -1,0 +1,41 @@
+# openWakeWord training recipe for "Hey Alex".
+#
+# Knobs to tune later:
+# - n_samples            : larger positive set → better recall at higher cost
+# - augmentation_rounds  : noise / reverb / pitch shift; ~3 is the sweet spot
+# - false_positive_validation_data : if you have audio of *your* meetings
+#   that should NOT trigger, drop it in and reference it here.
+
+target_phrase:
+  - "hey Alex"
+  - "Alex"
+
+# Models / TTS engines used to synthesize the positive examples. Multiple
+# voices + accents + speeds = robust detector.
+tts_voices:
+  - en_US-amy-medium
+  - en_US-libritts-high
+  - en_US-lessac-medium
+  - en_US-ryan-high
+  - en_GB-alan-medium
+
+n_samples: 5000
+augmentation_rounds: 3
+
+# Hard negatives — we explicitly want the model NOT to fire on these.
+hard_negatives:
+  - "Alexa"
+  - "Alex Smith"
+  - "Alexander"
+  - "Alexandra"
+  - "Alec"
+  - "election"
+  - "Alec said"
+  - "Alex's idea"
+
+# Use openWakeWord's bundled background-noise / common-speech corpora as
+# the negative dataset baseline.
+use_default_negatives: true
+
+# Output
+output_model_name: hey_alex_v1

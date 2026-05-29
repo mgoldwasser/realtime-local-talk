@@ -1,0 +1,72 @@
+[project]
+name = "realtime-local-talk"
+version = "0.1.0"
+description = "Alex: ultra-low-latency voice meeting assistant for Apple Silicon"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Pipecat core + the specific service plugins we need for Phase 1.
+    # See https://github.com/pipecat-ai/pipecat for the full plugin catalog.
+    "pipecat-ai[silero,local,aws,openai,mlx-whisper]>=0.0.100",
+    # PyYAML for the vocab biasing config.
+    "pyyaml>=6.0",
+    # --- Phase 4 RAG ---
+    # LanceDB embedded vector store (NEON-tuned for Apple Silicon).
+    "lancedb>=0.27.0",
+    "pylance>=0.40.0",
+    # DuckDB for structured / time-series side of retrieval.
+    "duckdb>=1.4.0",
+    # PDF parsing for ingest.
+    "pymupdf>=1.27.0",
+    # Local embeddings on Apple Silicon via MLX.
+    "mlx-embeddings>=0.0.5",
+    # Sentence-piece tokenizer (used by bge-m3 family).
+    "sentencepiece>=0.2.0",
+    # Tantivy for LanceDB full-text search (BM25).
+    "tantivy>=0.25.0",
+    # --- Phase 3 wake/PTT ---
+    "pynput>=1.8.0",
+    "onnxruntime>=1.23.0",
+    # AWS SDK (used directly for streaming Polly and Bedrock when we want
+    # finer control than Pipecat's services give us).
+    "boto3>=1.40.0",
+    "botocore>=1.40.0",
+    # OpenAI SDK for Tier-2b GPT-5 and the web_search tool path.
+    "openai>=2.0.0",
+    # Audio I/O on macOS. sounddevice wraps PortAudio cleanly and supports
+    # device selection by name (needed for the BlackHole / Speak2 routing).
+    "sounddevice>=0.5.1",
+    "numpy>=2.0.0",
+    "soundfile>=0.13.1",
+    # Config and CLI.
+    "python-dotenv>=1.1.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "typer>=0.15.0",
+    "rich>=14.0.0",
+    "openwakeword>=0.4.0",
+]
+
+[project.scripts]
+alex = "alex.app:cli"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=1.0.0",
+    "ruff>=0.9.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["alex", "ingest_cli"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

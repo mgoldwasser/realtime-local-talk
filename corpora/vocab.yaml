@@ -1,0 +1,63 @@
+# Vocabulary biasing for Whisper STT.
+#
+# Whisper's `initial_prompt` is a free-form text snippet (max ~244 tokens)
+# that biases decoding toward the words/phrases it contains. Useful for
+# tickers, fund names, analyst names, and domain jargon that the base
+# Whisper model has likely never seen at scale.
+#
+# Edit per meeting / per committee. The loader composes a single prompt
+# string in the order categories appear here, so put the highest-priority
+# terms first.
+
+# Equity index ETFs and proxies commonly discussed in TAA meetings.
+tickers:
+  - SPY    # S&P 500
+  - IVV
+  - VOO
+  - IWM    # Russell 2000
+  - QQQ    # Nasdaq-100
+  - EFA    # MSCI EAFE
+  - EEM    # MSCI EM
+  - VWO
+  - AGG    # US Aggregate Bond
+  - TLT    # 20+ Year Treasury
+  - HYG    # High yield
+  - LQD    # IG corporate
+  - GLD    # Gold
+  - DBC    # Broad commodities
+
+# T. Rowe Price funds and internal names (placeholders — replace with the
+# real ones you want to bias).
+funds:
+  - T. Rowe Price Blue Chip Growth
+  - T. Rowe Price Capital Appreciation
+  - T. Rowe Price Equity Income
+  - Tactical Asset Allocation
+
+# Common Bloomberg / benchmark vocabulary that Whisper otherwise mangles.
+terms:
+  - basis points
+  - Bloomberg US Aggregate
+  - Russell 1000
+  - Russell 2000
+  - MSCI EAFE
+  - MSCI Emerging Markets
+  - Treasury yields
+  - investment grade
+  - high yield
+  - duration
+  - convexity
+  - alpha
+  - beta
+  - tracking error
+  - Sharpe ratio
+  - drawdown
+  - Federal Reserve
+  - FOMC
+  - SOFR
+
+# People commonly speaking — names Whisper might invent spellings for.
+# (placeholders)
+people:
+  - Sebastien Page
+  - Charles Shriver

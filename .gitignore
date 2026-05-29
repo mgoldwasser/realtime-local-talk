@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+.env.local
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+
+# Models — kept out of git, large + downloaded per-machine.
+models/
+data/
+*.onnx
+*.gguf
+*.safetensors
+
+# Corpora — track starter config + sample notes; block real research material.
+# Drop your actual PDFs / real notes in corpora/private/ so they're never committed.
+corpora/private/
+*.pdf
+*.epub
+*.docx
+
+# Runtime artifacts.
+logs/
+*.log
+latency_runs/

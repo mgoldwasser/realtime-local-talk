@@ -1,0 +1,40 @@
+{
+  "tickers": {
+    "SPY":  {"name": "SPDR S&P 500 ETF",                    "asset_class": "US Equity",            "region": "United States",     "sector": "Broad",          "factors": ["Quality", "Momentum"]},
+    "IVV":  {"name": "iShares Core S&P 500",                 "asset_class": "US Equity",            "region": "United States",     "sector": "Broad",          "factors": ["Quality", "Momentum"]},
+    "VOO":  {"name": "Vanguard S&P 500 ETF",                 "asset_class": "US Equity",            "region": "United States",     "sector": "Broad",          "factors": ["Quality", "Momentum"]},
+    "IWM":  {"name": "iShares Russell 2000",                 "asset_class": "US Equity",            "region": "United States",     "sector": "Small Cap",      "factors": ["Size", "Value"]},
+    "QQQ":  {"name": "Invesco QQQ",                          "asset_class": "US Equity",            "region": "United States",     "sector": "Technology",     "factors": ["Growth", "Momentum"]},
+    "EFA":  {"name": "iShares MSCI EAFE",                    "asset_class": "International Equity", "region": "Developed ex-US",   "sector": "Broad",          "factors": ["Value"]},
+    "EEM":  {"name": "iShares MSCI Emerging Markets",        "asset_class": "EM Equity",            "region": "Emerging",          "sector": "Broad",          "factors": ["Value", "Size"]},
+    "VWO":  {"name": "Vanguard FTSE Emerging Markets",       "asset_class": "EM Equity",            "region": "Emerging",          "sector": "Broad",          "factors": ["Value", "Size"]},
+    "AGG":  {"name": "iShares Core US Aggregate Bond",       "asset_class": "Fixed Income",         "region": "United States",     "sector": "Aggregate",      "factors": ["Duration"]},
+    "TLT":  {"name": "iShares 20+ Year Treasury",            "asset_class": "US Treasury",          "region": "United States",     "sector": "Long Duration",  "factors": ["Duration"]},
+    "HYG":  {"name": "iShares iBoxx $ High Yield",           "asset_class": "HY Credit",            "region": "United States",     "sector": "High Yield",     "factors": ["Credit"]},
+    "LQD":  {"name": "iShares iBoxx $ Investment Grade",     "asset_class": "IG Credit",            "region": "United States",     "sector": "Investment Grade","factors": ["Duration", "Credit"]},
+    "GLD":  {"name": "SPDR Gold Shares",                     "asset_class": "Commodities",          "region": "Global",            "sector": "Precious Metals","factors": []},
+    "DBC":  {"name": "Invesco DB Commodity Index",           "asset_class": "Commodities",          "region": "Global",            "sector": "Broad Commodities","factors": []}
+  },
+
+  "funds": {
+    "T. Rowe Price Blue Chip Growth":  {"top_holdings": ["MSFT", "AAPL", "NVDA", "AMZN", "META"], "asset_class": "US Equity",  "style": "Large Cap Growth"},
+    "T. Rowe Price Capital Appreciation": {"top_holdings": ["MSFT", "GOOGL", "AMZN", "AGG", "TLT"], "asset_class": "Multi-Asset", "style": "Tactical Allocation"},
+    "T. Rowe Price Equity Income":     {"top_holdings": ["JPM", "WFC", "VZ", "T", "PFE"],          "asset_class": "US Equity",  "style": "Large Cap Value"}
+  },
+
+  "people": {
+    "Sebastien Page":  {"role": "Head of Global Multi-Asset", "committee": "TAA"},
+    "Charles Shriver": {"role": "Co-Head of Asset Allocation", "committee": "TAA"}
+  },
+
+  "factor_definitions": {
+    "Quality":       "Companies with strong balance sheets, high ROE, low debt.",
+    "Low Volatility": "Stocks with historically low return volatility.",
+    "Value":         "Stocks trading at low multiples vs fundamentals.",
+    "Size":          "Tilt toward small-cap stocks.",
+    "Momentum":      "Stocks with strong recent price performance.",
+    "Growth":        "Stocks with high earnings growth expectations.",
+    "Duration":      "Sensitivity to interest rate changes.",
+    "Credit":        "Sensitivity to corporate credit spreads."
+  }
+}
